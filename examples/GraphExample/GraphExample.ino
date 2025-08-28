@@ -1,6 +1,8 @@
 #include <TFT_eSPI.h>
 #include <GraphTFT.h>
 
+#define TFT_GREY 0x5AEB
+
 TFT_eSPI tft = TFT_eSPI();
 
 String names[3] = {"Sensor A", "Sensor B", "Sensor C"}; 
