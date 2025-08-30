@@ -42,4 +42,38 @@ private:
     void drawLegend();
 };
 
+
+class PieChart {
+public:
+    PieChart(TFT_eSPI *display, int x0, int y0, int totalW, int totalH,
+             String graphTitle,
+             LegendPosition legend = LEGEND_RIGHT,
+             int nSeries = 1, String names[] = nullptr, uint16_t colors[] = nullptr,
+             uint16_t bg = TFT_BLACK);
+
+    void setData(float values[]);
+    void draw();
+
+private:
+    TFT_eSPI *tft;
+    int x, y, w, h;       // área total
+    int cx, cy, r;        // centro e raio do círculo
+    int slices;
+    String sliceLabels[10];
+    uint16_t sliceColors[10];
+    float sliceValues[10];
+    float total;
+    uint16_t bgColor;
+    String title;
+    LegendPosition legendPos;
+
+    // Reservas de espaço
+    int titleSize = 20;
+    int legendSize = 0;
+
+    void drawLegend();
+    void drawTitle();
+};
+
+
 #endif
