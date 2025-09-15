@@ -304,3 +304,150 @@ void PieChart::draw() {
     drawTitle();
     drawLegend();
 }
+
+// =======================
+//   BAR CHART
+// =======================
+BarChart::BarChart(TFT_eSPI *display, int x0, int y0, int totalW, int totalH,
+                   String graphTitle, LegendPosition legend,
+                   int nSeries, String names[], uint16_t colors[],
+                   uint16_t bg) {
+    tft = display;
+    x = x0; y = y0; w = totalW; h = totalH;
+    bgColor = bg;
+    title = graphTitle;
+    legendPos = legend;
+    bars = nSeries;
+
+    // Initialize series names and colors
+    for (int i = 0; i < bars; i++) {
+        barLabels[i] = (names) ? names[i] : "S" + String(i+1);
+        barColors[i] = (colors) ? colors[i] : TFT_BLUE;
+        barValues[i] = 0;
+    }
+
+    // Legend size calculation
+    legendSize = 0;
+    if (legendPos == LEGEND_TOP || legendPos == LEGEND_BOTTOM) {
+        legendSize = 15;
+    } else {
+        for (int i = 0; i < bars; i++) {
+            int textW = tft->textWidth(barLabels[i]) + 20;
+            if (textW > legendSize) legendSize = textW;
+        }
+    }
+
+    // Plot area
+    plotX = x + axisMargin;
+    plotY = y + titleSize;
+    plotW = w - axisMargin;
+    plotH = h - titleSize;
+
+    // Adjust for legend
+    switch (legendPos) {
+        case LEGEND_TOP:    plotY += legendSize; plotH -= legendSize; break;
+        case LEGEND_BOTTOM: plotH -= legendSize; break;
+        case LEGEND_LEFT:   plotX += legendSize; plotW -= legendSize; break;
+        case LEGEND_RIGHT:  plotW -= legendSize; break;
+    }
+}
+
+void BarChart::setData(float values[]) {
+    maxValue = 0;
+    for (int i = 0; i < bars; i++) {
+        barValues[i] = values[i];
+        if (barValues[i] > maxValue) maxValue = barValues[i];
+    }
+}
+
+void BarChart::drawTitle() {
+    if (title != "") {
+        tft->setTextColor(TFT_WHITE, bgColor);
+        tft->setTextSize(1);
+        tft->drawCentreString(title, x + w/2, y, 2);
+    }
+}
+
+void BarChart::drawLegend() {
+    int boxSize = 10;
+    int padding = 4;
+
+    switch (legendPos) {
+        case LEGEND_TOP:
+        case LEGEND_BOTTOM: {
+            int lx = plotX;
+            int ly = (legendPos == LEGEND_TOP) ? y + titleSize : plotY + plotH + 2;
+            for (int i = 0; i < bars; i++) {
+                int textW = tft->textWidth(barLabels[i]);
+                tft->fillRect(lx, ly, boxSize, boxSize, barColors[i]);
+                tft->setCursor(lx + boxSize + padding, ly);
+                tft->setTextColor(TFT_WHITE, bgColor);
+                tft->setTextSize(1);
+                tft->print(barLabels[i]);
+                lx += boxSize + padding + textW + padding;
+            }
+            break;
+        }
+        case LEGEND_LEFT:
+        case LEGEND_RIGHT: {
+            for (int i = 0; i < bars; i++) {
+                int lx = (legendPos == LEGEND_LEFT) ? x + 2 : plotX + plotW + 2;
+                int ly = plotY + i*(plotH / bars);
+                tft->fillRect(lx, ly, boxSize, boxSize, barColors[i]);
+                tft->setCursor(lx + boxSize + 2, ly);
+                tft->setTextColor(TFT_WHITE, bgColor);
+                tft->setTextSize(1);
+                tft->print(barLabels[i]);
+            }
+            break;
+        }
+    }
+}
+
+void BarChart::draw() {
+    // Clear plot
+    tft->fillRect(plotX, plotY, plotW, plotH, bgColor);
+    tft->drawRect(plotX, plotY, plotW, plotH, TFT_WHITE);
+
+    if (maxValue <= 0) return;
+
+    int barWidth = plotW / bars;
+    float scaleY = (float)plotH / maxValue;
+
+    for (int i = 0; i < bars; i++) {
+        int barHeight = (int)(barValues[i] * scaleY);
+        int bx = plotX + i * barWidth + 2;
+        int by = plotY + plotH - barHeight;
+
+        // Draw bar
+        tft->fillRect(bx, by, barWidth - 4, barHeight, barColors[i]);
+
+        // ==========================
+        // Draw value (with decimals)
+        // ==========================
+        String valStr = String(barValues[i], 1); // 1 decimal place
+        int textY = by - 12;                     // posição padrão (acima da barra)
+
+        if (textY < plotY + 2) {
+            // 🔹 Se o texto sair do retângulo, desenha dentro da barra
+            textY = by + 2;
+
+            // Contraste automático
+            uint16_t color = (barColors[i] == TFT_BLACK || 
+                              barColors[i] == TFT_BLUE || 
+                              barColors[i] == TFT_RED)
+                             ? TFT_WHITE : TFT_BLACK;
+
+            tft->setTextColor(color, barColors[i]);
+        } else {
+            tft->setTextColor(TFT_WHITE, bgColor);
+        }
+
+        tft->setTextSize(1);
+        tft->drawCentreString(valStr, bx + (barWidth/2), textY, 1);
+    }
+
+    drawTitle();
+    drawLegend();
+}
+
