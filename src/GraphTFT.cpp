@@ -451,3 +451,71 @@ void BarChart::draw() {
     drawLegend();
 }
 
+
+// =======================
+//   GAUGE IMPLEMENTATION
+// =======================
+
+Gauge::Gauge(TFT_eSPI *display, int cx_, int cy_, int radius_,
+             uint16_t bg, uint16_t fg, int minVal_, int maxVal_) {
+    tft = display;
+    cx = cx_;
+    cy = cy_;
+    radius = radius_;
+    bgColor = bg;
+    fgColor = fg;
+    minVal = minVal_;
+    maxVal = maxVal_;
+    currValue = minVal;
+    thickness = 14; // default ring thickness
+    drawGauge();
+}
+
+void Gauge::setColors(uint16_t bg, uint16_t fg) {
+    bgColor = bg;
+    fgColor = fg;
+    drawGauge();
+}
+
+void Gauge::setValue(int value) {
+    if (value < minVal) value = minVal;
+    if (value > maxVal) value = maxVal;
+    currValue = value;
+    drawGauge();
+}
+
+static float _deg2rad(float d) { return d * 0.017453292519943295; }
+
+void Gauge::drawGauge() {
+    // clear area (outer circle + some margin)
+    tft->fillCircle(cx, cy, radius + 2, bgColor);
+
+    // compute angle span from -90 (top) clockwise
+    float span = 0;
+    if (maxVal > minVal) {
+        span = ((float)(currValue - minVal) / (maxVal - minVal)) * 360.0;
+    }
+    float start = -90;
+    float end = start + span;
+
+    // draw filled pie for progress
+    for (float a = start; a < end; a += 1.0) {
+        float x1 = cx + radius * cos(_deg2rad(a));
+        float y1 = cy + radius * sin(_deg2rad(a));
+        float x2 = cx + radius * cos(_deg2rad(a + 1));
+        float y2 = cy + radius * sin(_deg2rad(a + 1));
+        tft->fillTriangle(cx, cy, x1, y1, x2, y2, fgColor);
+    }
+
+    // mask center to create ring effect
+    int innerR = radius - thickness;
+    if (innerR > 0) {
+        tft->fillCircle(cx, cy, innerR, bgColor);
+    }
+
+    // draw numeric value in center
+    tft->setTextColor(fgColor, bgColor);
+    tft->setTextSize(1);
+    tft->drawCentreString(String(currValue), cx, cy - 8, 4);
+}
+

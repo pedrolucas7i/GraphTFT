@@ -118,4 +118,45 @@ private:
     void drawLegend();
 };
 
+
+// =======================
+//   GAUGE (circular ring)
+// =======================
+class Gauge {
+public:
+    /**
+     * @param display  TFT_eSPI pointer
+     * @param cx       center X coordinate
+     * @param cy       center Y coordinate
+     * @param radius   outer radius of the ring
+     * @param bg       background color (also used to clear the inner circle)
+     * @param fg       progress color
+     * @param minVal   minimum measurable value (mapped to 0%)
+     * @param maxVal   maximum measurable value (mapped to 100%)
+     */
+    Gauge(TFT_eSPI *display, int cx, int cy, int radius,
+          uint16_t bg = TFT_BLACK, uint16_t fg = TFT_GREEN,
+          int minVal = 0, int maxVal = 100);
+
+    /**
+     * Set a new value (will be clamped) and redraw gauge
+     */
+    void setValue(int value);
+
+    /**
+     * Change gauge colours
+     */
+    void setColors(uint16_t bg, uint16_t fg);
+
+private:
+    TFT_eSPI *tft;
+    int cx, cy, radius;
+    int thickness;
+    uint16_t bgColor, fgColor;
+    int minVal, maxVal;
+    int currValue;
+
+    void drawGauge();
+};
+
 #endif

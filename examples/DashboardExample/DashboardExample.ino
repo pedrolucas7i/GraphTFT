@@ -14,6 +14,9 @@ String lineNames[] = {"Temp °C","Hum %"};
 String barNames[]  = {"ON","OFF","ALERT"};
 String pieNames[]  = {"Solar","Grid","Battery"};
 
+// since we added gauge support, we'll show moisture as a circular widget
+Gauge moistureGauge(&tft, 120, 60, 50, tft.color565(30,30,30), COLORS[1]);
+
 // --- Charts --- //
 Graph lineChart(&tft, 0, 0, 245, 100, 0, 100, "Climate Monitor",
                   LEGEND_BOTTOM, 2, lineNames, COLORS, tft.color565(30,30,30));
@@ -52,6 +55,9 @@ void setup() {
   float pieVals[] = {50, 30, 20};
   pieChart.setData(pieVals);
   pieChart.draw();
+
+  // initialize gauge to zero moisture
+  moistureGauge.setValue(0);
 }
 
 void loop() {
@@ -79,6 +85,10 @@ void loop() {
   float pieVals[] = {solar, grid, batt};
   pieChart.setData(pieVals);
   pieChart.draw();
+
+  // Atualiza gauge (simulação de humidade/moisture)
+  float moisture = random(0, 100);
+  moistureGauge.setValue((int)moisture);
 
   counter++;
   delay(1200);

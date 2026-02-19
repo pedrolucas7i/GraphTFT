@@ -9,6 +9,7 @@
 * 📈 **Scrolling line graph** for real-time data
 * 🟦 **Bar chart** with numeric values
 * 🥧 **Pie chart** with legend
+* 🎯 **Circular gauge** widget for percentage/level indicators
 * 📊 Multiple data series with customizable colors and labels
 * 📍 Flexible legend placement: top, bottom, left, or right
 * 📐 Automatic axis scaling and labeling
@@ -80,6 +81,20 @@ BarChart(
     String names[] = nullptr,
     uint16_t colors[] = nullptr,
     uint16_t bg = TFT_BLACK
+)
+```
+
+### 🔹 Gauge
+
+```cpp
+Gauge(
+    TFT_eSPI *display,
+    int cx, int cy,
+    int radius,
+    uint16_t bg = TFT_BLACK,         // inner/background color
+    uint16_t fg = TFT_GREEN,         // progress color
+    int minVal = 0,                  // value mapped to 0%
+    int maxVal = 100                 // value mapped to 100%
 )
 ```
 
@@ -215,6 +230,64 @@ void setup() {
 }
 
 void loop() {}
+```
+
+---
+
+### 🧮 Gauge
+
+```cpp
+#include <TFT_eSPI.h>
+#include <GraphTFT.h>
+
+TFT_eSPI tft = TFT_eSPI();
+
+Gauge g(&tft, 120, 120, 80, TFT_BLACK, TFT_GREEN);
+
+void setup() {
+    tft.init();
+    tft.setRotation(1);
+    tft.fillScreen(TFT_BLACK);
+    g.setValue(0);
+}
+
+void loop() {
+    static int v = 0;
+    v += 3;
+    if (v > 100) v = 0;
+    g.setValue(v);
+    delay(100);
+}
+```
+
+---
+
+### 🪴 Plant Dashboard (multi-card)
+
+A simple layout demonstrating how you can combine gauges and text in a “dashboard” style.
+The sketch draws three cards side‑by‑side and updates each moisture gauge randomly.
+
+```cpp
+#include <TFT_eSPI.h>
+#include <GraphTFT.h>
+
+// see examples/PlantDashboardExample/PlantDashboardExample.ino for full code
+```
+
+---
+
+### 🟡 CYD Dashboard
+
+Targeted for the CYD (ESP32 “Cheep Yellow Display”) module. It mimics the
+HTML dashboard you showed at the beginning: each card contains a moisture
+gauge, temperature/humidity readings and a tiny scrolling line graph. A
+simple clock is drawn in the header.
+
+```cpp
+#include <TFT_eSPI.h>
+#include <GraphTFT.h>
+
+// see examples/CYDExample/CYDExample.ino for full code
 ```
 
 ---
