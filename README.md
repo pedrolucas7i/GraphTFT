@@ -262,35 +262,74 @@ void loop() {
 
 ---
 
-### 🪴 Plant Dashboard (multi-card)
+### 🃏 Generic Card
 
-A simple layout demonstrating how you can combine gauges and text in a “dashboard” style.
-The sketch draws three cards side‑by‑side and updates each moisture gauge randomly.
+`Card` is a lightweight container class for drawing rounded rectangles with
+a title. It’s designed to be reused in dashboard layouts going beyond the
+example – you can subclass it or simply draw a card and then add your own
+widgets inside it.
+
+```cpp
+Card c(&tft, 10, 10, 120, 80, "Notes");
+c.draw();
+```
+
+### 📦 Card layout example
+
+The card example demonstrates how to combine basic widgets inside the
+`Card` container.  In this sketch each card holds a gauge and a scrolling
+graph; the loop manually updates those elements.
 
 ```cpp
 #include <TFT_eSPI.h>
 #include <GraphTFT.h>
 
-// see examples/PlantDashboardExample/PlantDashboardExample.ino for full code
+TFT_eSPI tft = TFT_eSPI();
+Card *cards[3];
+Gauge *gauges[3];
+Graph *graphs[3];
+
+void setup() {
+    tft.init();
+    tft.invertDisplay(true);
+    tft.setRotation(1);
+    tft.fillScreen(tft.color565(0x0a,0x0f,0x1a));
+
+    // simple header
+    tft.setTextSize(2);
+    tft.setTextColor(tft.color565(0xe2,0xe8,0xf0));
+    tft.drawString("PlantSense Pro", 10, 4);
+
+    int cardW = 100;
+    int cardH = 150;
+    int spacing = 10;
+    int startX = 10;
+    int startY = 20;
+
+    for (int i = 0; i < 3; i++) {
+        int x = startX + i * (cardW + spacing);
+        cards[i] = new Card(&tft, x, startY, cardW, cardH, "Plant");
+        gauges[i] = new Gauge(&tft, x + cardW/2, startY + 60, 40);
+        graphs[i] = new Graph(&tft, x + 10, startY + cardH - 60, cardW - 20, 50,
+                              0, 100, "", LEGEND_RIGHT);
+        cards[i]->draw();
+    }
+}
+
+void loop() {
+    for (int i = 0; i < 3; i++) {
+        int m = random(0, 100);
+        gauges[i]->setValue(m);
+        graphs[i]->plotPoint(0, m);
+        graphs[i]->nextX();
+    }
+    delay(4000);
+}
+
 ```
 
----
+Full sketch is available in `examples/PlantDashboardExample/PlantDashboardExample.ino`.
 
-### 🟡 CYD Dashboard
-
-Targeted for the CYD (ESP32 “Cheep Yellow Display”) module. It mimics the
-HTML dashboard you showed at the beginning: each card contains a moisture
-gauge, temperature/humidity readings and a tiny scrolling line graph. A
-simple clock is drawn in the header.
-
-```cpp
-#include <TFT_eSPI.h>
-#include <GraphTFT.h>
-
-// see examples/CYDExample/CYDExample.ino for full code
-```
-
----
 
 ## 📑 Public Functions
 

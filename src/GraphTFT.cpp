@@ -1,5 +1,132 @@
 #include "GraphTFT.h"
 #include <math.h>
+#include <algorithm>   // std::swap used by anti‑alias routines
+
+// -----------------------------------------------------------------------------
+//  helper routines for simple anti-aliased drawing
+// -----------------------------------------------------------------------------
+
+// you can disable pixel reads if your controller doesn't support them or if
+// performance is a concern. define to 0 before including GraphTFT.h.
+#ifndef AA_USE_READPIXEL
+#define AA_USE_READPIXEL 1
+#endif
+
+// fractional part of x
+static float fpart(float x) { return x - floor(x); }
+// reverse fractional part
+static float rfpart(float x) { return 1.0f - fpart(x); }
+
+// optional tweak that boosts small alpha values so the smoothing is more
+// visible on low‑resolution panels. comment out or adjust if the feathering
+// becomes too heavy.
+static float adjustAlpha(float a) {
+    // sqrt gives more weight to non‑zero fractions without exceeding 1
+    return a <= 0.0f ? 0.0f : (a >= 1.0f ? 1.0f : sqrtf(a));
+}
+
+// blend two 16‑bit 5/6/5 colours with a given opacity for the first colour
+static uint16_t blendColor(uint16_t c1, uint16_t c2, float alpha) {
+    alpha = adjustAlpha(alpha);
+    // clamp
+    if (alpha <= 0.0f) return c2;
+    if (alpha >= 1.0f) return c1;
+    uint8_t r1 = (c1 >> 11) & 0x1F;
+    uint8_t g1 = (c1 >> 5)  & 0x3F;
+    uint8_t b1 =  c1        & 0x1F;
+    uint8_t r2 = (c2 >> 11) & 0x1F;
+    uint8_t g2 = (c2 >> 5)  & 0x3F;
+    uint8_t b2 =  c2        & 0x1F;
+    uint8_t r = (uint8_t)(r1*alpha + r2*(1.0f-alpha));
+    uint8_t g = (uint8_t)(g1*alpha + g2*(1.0f-alpha));
+    uint8_t b = (uint8_t)(b1*alpha + b2*(1.0f-alpha));
+    return (r << 11) | (g << 5) | b;
+}
+
+// draw a pixel with blending against a fixed background colour
+static void blendPixel(TFT_eSPI *tft, int x, int y,
+                       uint16_t colour, uint16_t bg, float alpha) {
+    tft->drawPixel(x, y, blendColor(colour, bg, alpha));
+}
+
+// Xiaolin Wu's anti‑aliased line algorithm adapted for 16‑bit TFT
+static void drawAALine(TFT_eSPI *tft, int x0, int y0, int x1, int y1,
+                        uint16_t colour, uint16_t bg) {
+    using std::swap; // bring std::swap into unqualified lookup for built-in types
+    bool steep = abs(y1 - y0) > abs(x1 - x0);
+    if (steep) { swap(x0, y0); swap(x1, y1); }
+    if (x0 > x1) { swap(x0, x1); swap(y0, y1); }
+    int dx = x1 - x0;
+    int dy = y1 - y0;
+    float gradient = dx == 0 ? 1.0f : (float)dy / (float)dx;
+
+    // first endpoint
+    float xend = roundf(x0);
+    float yend = y0 + gradient * (xend - x0);
+    float xgap = rfpart(x0 + 0.5f);
+    int xpxl1 = (int)xend;
+    int ypxl1 = (int)floorf(yend);
+    if (steep) {
+        blendPixel(tft, ypxl1,   xpxl1, colour, bg, rfpart(yend) * xgap);
+        blendPixel(tft, ypxl1+1, xpxl1, colour, bg, fpart(yend)  * xgap);
+    } else {
+        blendPixel(tft, xpxl1, ypxl1,   colour, bg, rfpart(yend) * xgap);
+        blendPixel(tft, xpxl1, ypxl1+1, colour, bg, fpart(yend)  * xgap);
+    }
+    float intery = yend + gradient;
+
+    // main loop
+    for (int x = xpxl1 + 1; x <= x1 - 1; x++) {
+        if (steep) {
+            blendPixel(tft, (int)floorf(intery),   x, colour, bg, rfpart(intery));
+            blendPixel(tft, (int)floorf(intery)+1, x, colour, bg, fpart(intery));
+        } else {
+            blendPixel(tft, x, (int)floorf(intery),   colour, bg, rfpart(intery));
+            blendPixel(tft, x, (int)floorf(intery)+1, colour, bg, fpart(intery));
+        }
+        intery += gradient;
+    }
+
+    // last endpoint
+    xend = roundf(x1);
+    yend = y1 + gradient * (xend - x1);
+    xgap = fpart(x1 + 0.5f);
+    int xpxl2 = (int)xend;
+    int ypxl2 = (int)floorf(yend);
+    if (steep) {
+        blendPixel(tft, ypxl2,   xpxl2, colour, bg, rfpart(yend) * xgap);
+        blendPixel(tft, ypxl2+1, xpxl2, colour, bg, fpart(yend)  * xgap);
+    } else {
+        blendPixel(tft, xpxl2, ypxl2,   colour, bg, rfpart(yend) * xgap);
+        blendPixel(tft, xpxl2, ypxl2+1, colour, bg, fpart(yend)  * xgap);
+    }
+}
+
+// draw an anti‑aliased rectangle outline
+static void drawRectAA(TFT_eSPI *tft, int x, int y, int w, int h,
+                       uint16_t colour, uint16_t bg) {
+    drawAALine(tft, x,     y,     x + w - 1, y,     colour, bg);
+    drawAALine(tft, x + w - 1, y,     x + w - 1, y + h - 1, colour, bg);
+    drawAALine(tft, x + w - 1, y + h - 1, x,     y + h - 1, colour, bg);
+    drawAALine(tft, x,     y + h - 1, x,     y,     colour, bg);
+}
+
+// draw a circle outline with a simple feather (two concentric rings)
+static void drawCircleAA(TFT_eSPI *tft, int cx, int cy, int r,
+                         uint16_t colour, uint16_t bg) {
+    tft->drawCircle(cx, cy, r, colour);
+    uint16_t fade = blendColor(colour, bg, 0.5f);
+    if (r + 1 > 0) tft->drawCircle(cx, cy, r + 1, fade);
+    if (r - 1 > 0) tft->drawCircle(cx, cy, r - 1, fade);
+}
+
+// helper that fills a circle and smooths its border
+static void fillCircleAA(TFT_eSPI *tft, int cx, int cy, int r,
+                         uint16_t colour, uint16_t bg) {
+    tft->fillCircle(cx, cy, r, colour);
+    drawCircleAA(tft, cx, cy, r, colour, bg);
+}
+
 
 // =======================
 //   LINE GRAPH (with scroll)
@@ -62,14 +189,16 @@ Graph::Graph(TFT_eSPI *display, int x0, int y0, int totalW, int totalH,
 }
 
 void Graph::drawBox() {
+    // background is solid; use normal fill
     tft->fillRect(plotX, plotY, plotW, plotH, bgColor);
-    tft->drawRect(plotX, plotY, plotW, plotH, TFT_WHITE);
+    // anti-aliased border makes the box edges softer
+    drawRectAA(tft, plotX, plotY, plotW, plotH, TFT_WHITE, bgColor);
 }
 
 void Graph::drawAxes(int yStep) {
     for (int v = yMin; v <= yMax; v += yStep) {
         int py = map(v, yMin, yMax, plotY + plotH, plotY);
-        tft->drawLine(plotX - 3, py, plotX, py, TFT_WHITE);
+        drawAALine(tft, plotX - 3, py, plotX, py, TFT_WHITE, bgColor);
         tft->setTextColor(TFT_WHITE, bgColor);
         tft->setTextSize(1);
         tft->drawCentreString(String(v), plotX - 15, py - 4, 1);
@@ -127,7 +256,7 @@ void Graph::plotPoint(int series, int value) {
     if (posX > 0) {
         int pxPrev = plotX + posX - 1;
         int pyPrev = lastY[series][posX - 1];
-        tft->drawLine(pxPrev, pyPrev, px, py, seriesColors[series]);
+        drawAALine(tft, pxPrev, pyPrev, px, py, seriesColors[series], bgColor);
     }
     lastY[series][posX] = py;
 }
@@ -142,7 +271,7 @@ void Graph::nextX() {
             }
         }
 
-        // Clear plot area and redraw background
+        // Clear plot area and redraw background (smoothing will happen in drawBox/axes)
         drawBox();
         drawAxes();
         drawTitle();
@@ -152,8 +281,10 @@ void Graph::nextX() {
         for (int i = 0; i < seriesCount; i++) {
             for (int j = 1; j < plotW; j++) {
                 if (lastY[i][j-1] != plotY + plotH && lastY[i][j] != plotY + plotH) {
-                    tft->drawLine(plotX + j - 1, lastY[i][j-1],
-                                  plotX + j,     lastY[i][j], seriesColors[i]);
+                    drawAALine(tft,
+                               plotX + j - 1, lastY[i][j-1],
+                               plotX + j,     lastY[i][j],
+                               seriesColors[i], bgColor);
                 }
             }
         }
@@ -301,6 +432,9 @@ void PieChart::draw() {
         startAngle = endAngle;
     }
 
+    // soften circumference
+    drawCircleAA(tft, cx, cy, r, TFT_WHITE, bgColor);
+
     drawTitle();
     drawLegend();
 }
@@ -407,7 +541,7 @@ void BarChart::drawLegend() {
 void BarChart::draw() {
     // Clear plot
     tft->fillRect(plotX, plotY, plotW, plotH, bgColor);
-    tft->drawRect(plotX, plotY, plotW, plotH, TFT_WHITE);
+    drawRectAA(tft, plotX, plotY, plotW, plotH, TFT_WHITE, bgColor);
 
     if (maxValue <= 0) return;
 
@@ -420,6 +554,7 @@ void BarChart::draw() {
         int by = plotY + plotH - barHeight;
 
         // Draw bar
+        // bars are solid, no AA needed on volume – edges softened by drawing small rectangles with background
         tft->fillRect(bx, by, barWidth - 4, barHeight, barColors[i]);
 
         // ==========================
@@ -487,8 +622,8 @@ void Gauge::setValue(int value) {
 static float _deg2rad(float d) { return d * 0.017453292519943295; }
 
 void Gauge::drawGauge() {
-    // clear area (outer circle + some margin)
-    tft->fillCircle(cx, cy, radius + 2, bgColor);
+    // clear area (outer circle + some margin) with smooth border
+    fillCircleAA(tft, cx, cy, radius + 2, bgColor, bgColor);
 
     // compute angle span from -90 (top) clockwise
     float span = 0;
@@ -507,10 +642,15 @@ void Gauge::drawGauge() {
         tft->fillTriangle(cx, cy, x1, y1, x2, y2, fgColor);
     }
 
+    // soften outer edge of progress ring
+    drawCircleAA(tft, cx, cy, radius, fgColor, bgColor);
+
     // mask center to create ring effect
     int innerR = radius - thickness;
     if (innerR > 0) {
-        tft->fillCircle(cx, cy, innerR, bgColor);
+        fillCircleAA(tft, cx, cy, innerR, bgColor, fgColor);
+        // smooth inner boundary as well
+        drawCircleAA(tft, cx, cy, innerR, bgColor, fgColor);
     }
 
     // draw numeric value in center
@@ -518,4 +658,47 @@ void Gauge::drawGauge() {
     tft->setTextSize(1);
     tft->drawCentreString(String(currValue), cx, cy - 8, 4);
 }
+
+
+// =======================
+//   PLANT CARD IMPLEMENTATION
+// =======================
+
+
+
+// ---------------------
+//  Card implementation
+// ---------------------
+
+Card::Card(TFT_eSPI *display,
+           int x0, int y0, int cardW, int cardH,
+           const String &title_,
+           uint16_t bg, uint16_t border, uint16_t text) :
+    tft(display), x(x0), y(y0), w(cardW), h(cardH),
+    title(title_),
+    bgColor(bg), borderColor(border), textColor(text)
+{
+}
+
+void Card::draw() {
+    // draw rounded rect and header
+    tft->fillRoundRect(x, y, w, h, 10, bgColor);
+    tft->drawRoundRect(x, y, w, h, 10, borderColor);
+
+    if (title.length()) {
+        int tx = x + 10;
+        int ty = y + 10;
+        tft->setTextSize(1);
+        tft->setTextColor(textColor);
+        tft->drawString(title, tx, ty + 2);
+    }
+}
+
+void Card::setTitle(const String &t) { title = t; }
+void Card::setColors(uint16_t bg, uint16_t border, uint16_t text) {
+    bgColor = bg;
+    borderColor = border;
+    textColor = text;
+}
+
 

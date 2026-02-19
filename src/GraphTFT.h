@@ -159,4 +159,32 @@ private:
     void drawGauge();
 };
 
+
+// simple rounded rectangular container with optional title and icon
+class Card {
+public:
+    Card(TFT_eSPI *display,
+         int x0, int y0, int cardW, int cardH,
+         const String &title = "",
+         uint16_t bg = TFT_BLACK, uint16_t border = TFT_WHITE,
+         uint16_t text = TFT_WHITE);
+
+    virtual ~Card() {}
+
+    // draw the card background and header; subclasses should call
+    // Card::draw() first when overriding
+    virtual void draw();
+
+    void setTitle(const String &t);
+    void setColors(uint16_t bg, uint16_t border, uint16_t text);
+
+protected:
+    TFT_eSPI *tft;
+    int x, y, w, h;
+    String title;
+    uint16_t bgColor;
+    uint16_t borderColor;
+    uint16_t textColor;
+};
+
 #endif
